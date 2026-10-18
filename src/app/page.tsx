@@ -1,69 +1,308 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
+import { Plus, Navigation, RefreshCw } from 'lucide-react';
+import Header from '@/components/Header';
+import BudgetCroissantBar from '@/components/BudgetCroissantBar';
+import ItinerarySection from '@/components/ItinerarySection';
+import EditItineraryModal from '@/components/EditItineraryModal';
+import AddItineraryModal from '@/components/AddItineraryModal';
+import ExpenseModal from '@/components/ExpenseModal';
+import ExpensesListModal from '@/components/ExpensesListModal';
+import SheetSettingsModal from '@/components/SheetSettingsModal';
+import FloatingActionButton from '@/components/FloatingActionButton';
+import { ItineraryItem, ExpenseItem, WeatherInfo, ExchangeRates } from '@/types';
+
+// 動態載入 Leaflet 地圖，防止 SSR Hydration 錯誤
+const InteractiveMap = dynamic(() => import('@/components/InteractiveMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[400px] sm:h-[480px] rounded-3xl bg-slate-50 flex flex-col items-center justify-center text-slate-600 animate-pulse border border-slate-200">
+      <Navigation className="w-8 h-8 animate-spin-slow mb-2 text-sky-500" />
+      <span className="font-bold text-sm">正在載入阿爾卑斯浪漫地圖...</span>
+    </div>
+  ),
+});
 
 export default function Home() {
+  // 核心狀態
+  const [itinerary, setItinerary] = useState<ItineraryItem[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userCity, setUserCity] = useState<string>('瑞士/奧地利');
+  const [weather, setWeather] = useState<WeatherInfo | null>(null);
+  const [rates, setRates] = useState<ExchangeRates>({
+    EUR: 35.2,
+    CHF: 36.8,
+    GBP: 41.5,
+    TWD: 1,
+    updatedAt: '',
+  });
+  const [isGoogleConnected, setIsGoogleConnected] = useState<boolean>(false);
+  const [selectedSpot, setSelectedSpot] = useState<ItineraryItem | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // 彈跳視窗開關
+  const [editingSpot, setEditingSpot] = useState<ItineraryItem | null>(null);
+  const [isAddOpen, setIsAddOpen] = useState<boolean>(false);
+  const [isExpenseOpen, setIsExpenseOpen] = useState<boolean>(false);
+  const [isExpensesListOpen, setIsExpensesListOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+
+  // 1. 取得使用者即時 GPS 定位
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setUserLocation(loc);
+
+          // 透過反向地理編碼取得地名
+          fetch(`/api/geocode?lat=${loc.lat}&lng=${loc.lng}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.locationName && data.locationName !== '歐洲旅遊足跡點') {
+                setUserCity(data.locationName);
+              }
+            })
+            .catch(() => {});
+        },
+        err => {
+          console.warn('Geolocation access denied or unavailable:', err.message);
+          // 預設為薩爾斯堡中心
+          setUserLocation({ lat: 47.8095, lng: 13.055 });
+          setUserCity('薩爾斯堡 (Salzburg)');
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+  }, []);
+
+  // 2. 載入行程資料
+  const fetchItinerary = useCallback(async () => {
+    try {
+      const res = await fetch('/api/itinerary');
+      if (res.ok) {
+        const data = await res.json();
+        setItinerary(data.items || []);
+        setIsGoogleConnected(data.source === 'google_sheets');
+      }
+    } catch (err) {
+      console.error('Failed to fetch itinerary:', err);
+    }
+  }, []);
+
+  // 3. 載入記帳資料
+  const fetchExpenses = useCallback(async () => {
+    try {
+      const res = await fetch('/api/expenses');
+      if (res.ok) {
+        const data = await res.json();
+        setExpenses(data.items || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch expenses:', err);
+    }
+  }, []);
+
+  // 4. 載入匯率
+  const fetchRates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/rates');
+      if (res.ok) {
+        const data = await res.json();
+        setRates(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch rates:', err);
+    }
+  }, []);
+
+  // 5. 載入天氣
+  const fetchWeather = useCallback(async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(`/api/weather?lat=${lat}&lng=${lng}`);
+      if (res.ok) {
+        const data = await res.json();
+        setWeather(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch weather:', err);
+    }
+  }, []);
+
+  // 初始化資料載入
+  useEffect(() => {
+    async function init() {
+      setIsLoading(true);
+      await Promise.all([fetchItinerary(), fetchExpenses(), fetchRates()]);
+      setIsLoading(false);
+    }
+    init();
+  }, [fetchItinerary, fetchExpenses, fetchRates]);
+
+  // 當取得使用者位置或行程首站時，載入對應天氣
+  useEffect(() => {
+    if (userLocation) {
+      fetchWeather(userLocation.lat, userLocation.lng);
+    } else if (itinerary.length > 0 && itinerary[0].lat) {
+      fetchWeather(itinerary[0].lat, itinerary[0].lng);
+    }
+  }, [userLocation, itinerary, fetchWeather]);
+
+  // 拖拉排序（樂觀更新 + 後端同步）
+  const handleReorder = async (sourceIndex: number, destinationIndex: number) => {
+    const nextList = [...itinerary];
+    const [moved] = nextList.splice(sourceIndex, 1);
+    nextList.splice(destinationIndex, 0, moved);
+    setItinerary(nextList);
+
+    try {
+      await fetch('/api/itinerary/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceIndex, destinationIndex }),
+      });
+    } catch (err) {
+      console.error('Failed to sync reorder to server:', err);
+      // 失敗時重新獲取保證一致
+      fetchItinerary();
+    }
+  };
+
+  // 編輯行程點儲存
+  const handleSaveItinerary = async (updated: ItineraryItem) => {
+    const res = await fetch('/api/itinerary', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    if (!res.ok) throw new Error('儲存失敗');
+
+    setItinerary(prev =>
+      prev.map(item => (item.rowIndex === updated.rowIndex ? updated : item))
+    );
+  };
+
+  // 新增行程點
+  const handleAddItinerary = async (newItem: Omit<ItineraryItem, 'rowIndex'>) => {
+    const res = await fetch('/api/itinerary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItem),
+    });
+    if (!res.ok) throw new Error('新增失敗');
+    const created = await res.json();
+    setItinerary(prev => [...prev, created]);
+  };
+
+  // 記帳完成回呼
+  const handleExpenseAdded = (newExp: ExpenseItem) => {
+    setExpenses(prev => [newExp, ...prev]);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-white text-slate-800 flex flex-col font-sans selection:bg-sky-100 selection:text-sky-900">
+      {/* 頂部導覽 */}
+      <Header
+        weather={weather}
+        userCity={userCity}
+        isGoogleConnected={isGoogleConnected}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenExpensesList={() => setIsExpensesListOpen(true)}
+        expenseCount={expenses.length}
+      />
+
+      {/* 當日預算晴雨表與即時匯率小工具 */}
+      <BudgetCroissantBar expenses={expenses} rates={rates} />
+
+      {/* 主地圖區塊 */}
+      <main className="max-w-6xl mx-auto px-4 w-full flex-1">
+        <div className="mt-2">
+          <InteractiveMap
+            itinerary={itinerary}
+            expenses={expenses}
+            userLocation={userLocation}
+            selectedSpot={selectedSpot}
+            onSelectSpot={spot => setSelectedSpot(spot)}
+          />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+        {/* 行程列表與拖拉區塊 */}
+        {isLoading ? (
+          <div className="py-20 flex flex-col items-center justify-center text-slate-500">
+            <RefreshCw className="w-8 h-8 animate-spin text-sky-500 mb-3" />
+            <p className="font-bold text-sm">正在整理三天歐洲精美行程與試算表...</p>
+          </div>
+        ) : (
+          <ItinerarySection
+            itinerary={itinerary}
+            selectedSpot={selectedSpot}
+            onSelectSpot={spot => setSelectedSpot(spot)}
+            onEditSpot={spot => setEditingSpot(spot)}
+            onReorder={handleReorder}
+          />
+        )}
       </main>
+
+      {/* 浮動十字操作按鈕 (內含：記帳明細、新增踩點、即時記帳) */}
+      <FloatingActionButton
+        onOpenExpense={() => setIsExpenseOpen(true)}
+        onOpenAddSpot={() => setIsAddOpen(true)}
+        onOpenExpensesList={() => setIsExpensesListOpen(true)}
+        expenseCount={expenses.length}
+      />
+
+      {/* 編輯行程 Modal */}
+      <EditItineraryModal
+        spot={editingSpot}
+        isOpen={Boolean(editingSpot)}
+        onClose={() => setEditingSpot(null)}
+        onSave={handleSaveItinerary}
+      />
+
+      {/* 新增行程 Modal */}
+      <AddItineraryModal
+        isOpen={isAddOpen}
+        onClose={() => setIsAddOpen(false)}
+        onAdd={handleAddItinerary}
+      />
+
+      {/* 記帳 Modal */}
+      <ExpenseModal
+        isOpen={isExpenseOpen}
+        onClose={() => setIsExpenseOpen(false)}
+        userLocation={userLocation}
+        rates={rates}
+        onExpenseAdded={handleExpenseAdded}
+      />
+
+      {/* 記帳明細列表 Modal */}
+      <ExpensesListModal
+        isOpen={isExpensesListOpen}
+        onClose={() => setIsExpensesListOpen(false)}
+        expenses={expenses}
+      />
+
+      {/* Google Sheets 連線設定 Modal */}
+      <SheetSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        isGoogleConnected={isGoogleConnected}
+        onRefreshData={fetchItinerary}
+      />
+
+      {/* 頁尾旅行小語 */}
+      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
+        <p className="flex items-center justify-center gap-1.5 font-medium">
+          <span>🥐 歐洲旅行萬用小手冊</span>
+          <span>·</span>
+          <span>Google Sheets 雲端無伺服器資料庫</span>
+          <span>·</span>
+          <span>Powered by GCP Cloud Run</span>
+        </p>
+      </footer>
     </div>
   );
 }

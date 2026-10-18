@@ -1,0 +1,47 @@
+[
+  {
+    "id": "EXP-1718430000",
+    "timestamp": "2026-06-15 09:15:00",
+    "item": "蘇黎世火車站牛角可頌與咖啡",
+    "category": "美食",
+    "amount_orig": 11.5,
+    "currency": "CHF",
+    "rate_to_twd": 36.8,
+    "amount_twd": 423,
+    "payment_type": "Apple Pay",
+    "lat": 47.3781,
+    "lng": 8.5401,
+    "location_name": "瑞士蘇黎世中央車站",
+    "notes": "搭火車前在月台買的剛出爐酥脆牛角麵包！"
+  },
+  {
+    "id": "EXP-1718458000",
+    "timestamp": "2026-06-15 17:30:00",
+    "item": "薩爾斯堡正統莫札特巧克力 (Fürst)",
+    "category": "購物",
+    "amount_orig": 22.0,
+    "currency": "EUR",
+    "rate_to_twd": 35.2,
+    "amount_twd": 774,
+    "payment_type": "信用卡",
+    "lat": 47.7989,
+    "lng": 13.0452,
+    "location_name": "奧地利薩爾斯堡老城區",
+    "notes": "百年老店 Cafe Konditorei Fürst 手工藍銀包裝經典款。"
+  },
+  {
+    "id": "EXP-1718532000",
+    "timestamp": "2026-06-16 13:00:00",
+    "item": "奧地利經典炸牛排午餐 (Schnitzel)",
+    "category": "美食",
+    "amount_orig": 29.5,
+    "currency": "EUR",
+    "rate_to_twd": 35.2,
+    "amount_twd": 1038,
+    "payment_type": "Apple Pay",
+    "lat": 47.7997,
+    "lng": 13.0435,
+    "location_name": "奧地利薩爾斯堡蓋特萊德巷",
+    "notes": "外皮金黃酥脆，搭配檸檬與野莓果醬，口感一絕！"
+  }
+]
