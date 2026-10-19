@@ -93,19 +93,20 @@ function createExpenseIcon() {
 
 // 地圖視角控制子元件
 function MapController({
-  userLocation,
   selectedSpot,
-  itinerary,
 }: {
-  userLocation: { lat: number; lng: number } | null;
   selectedSpot: ItineraryItem | null;
-  itinerary: ItineraryItem[];
 }) {
   const map = useMap();
+  const lastSpotKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (selectedSpot && selectedSpot.lat && selectedSpot.lng) {
-      map.flyTo([selectedSpot.lat, selectedSpot.lng], 15, { duration: 1.2 });
+      const spotKey = `${selectedSpot.lat}-${selectedSpot.lng}`;
+      if (lastSpotKeyRef.current !== spotKey) {
+        lastSpotKeyRef.current = spotKey;
+        map.flyTo([selectedSpot.lat, selectedSpot.lng], 15, { duration: 1.2 });
+      }
     }
   }, [selectedSpot, map]);
 
@@ -121,6 +122,7 @@ export default function InteractiveMap({
   activeTab,
 }: InteractiveMapProps) {
   const mapRef = useRef<L.Map | null>(null);
+  const hasFittedInitialBoundsRef = useRef<boolean>(false);
 
   // 整理有效經緯度的行程點
   const validSpots = itinerary.filter(s => s.lat && s.lng);
@@ -129,6 +131,15 @@ export default function InteractiveMap({
   // 預設中心點（以行程第一個點或薩爾斯堡為中心）
   const defaultCenter: [number, number] =
     validSpots.length > 0 ? [validSpots[0].lat, validSpots[0].lng] : [47.8095, 13.055];
+
+  // 首次載入取得行程後自動調整視野涵蓋所有景點
+  useEffect(() => {
+    if (mapRef.current && validSpots.length > 0 && !hasFittedInitialBoundsRef.current) {
+      hasFittedInitialBoundsRef.current = true;
+      const bounds = L.latLngBounds(validSpots.map(s => [s.lat, s.lng]));
+      mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    }
+  }, [validSpots.length]);
 
   // 當切換分頁時，自動將地圖視野縮放至該分頁包含的所有行程景點
   useEffect(() => {
@@ -169,6 +180,8 @@ export default function InteractiveMap({
         center={defaultCenter}
         zoom={9}
         scrollWheelZoom={true}
+        wheelPxPerZoomLevel={120}
+        wheelDebounceTime={120}
         className="w-full h-full z-0"
         ref={mapRef}
       >
@@ -176,13 +189,14 @@ export default function InteractiveMap({
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://openstreetmap.org">OSM</a>'
           url={tileUrl}
+          subdomains="abcd"
+          maxZoom={20}
+          updateWhenZooming={false}
+          updateWhenIdle={true}
+          keepBuffer={4}
         />
 
-        <MapController
-          userLocation={userLocation}
-          selectedSpot={selectedSpot}
-          itinerary={itinerary}
-        />
+        <MapController selectedSpot={selectedSpot} />
 
         {/* 行程連線軌跡 (Polyline) */}
         {routePolyline.length > 1 && (
