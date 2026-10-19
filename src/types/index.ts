@@ -11,6 +11,7 @@ export interface ItineraryItem {
   ticket_status: string; // 未購 / 已購 / 免門票 / 需預約
   cost_estimate: number;
   notes: string;
+  completed?: boolean; // 是否已完成 / 已解鎖
 }
 
 export interface ExpenseItem {

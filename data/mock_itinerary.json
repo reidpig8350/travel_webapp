@@ -2,20 +2,6 @@
   {
     "rowIndex": 2,
     "date": "2026-06-15",
-    "time": "14:15",
-    "country": "奧地利",
-    "city": "薩爾斯堡",
-    "spot_name": "薩爾斯堡中央火車站 (Salzburg Hbf)",
-    "category": "交通",
-    "lat": 47.813,
-    "lng": 13.0456,
-    "ticket_status": "免門票",
-    "cost_estimate": 0,
-    "notes": "抵達薩爾斯堡，先前往老城區飯店 Check-in 卸下行李並稍作休息。"
-  },
-  {
-    "rowIndex": 3,
-    "date": "2026-06-15",
     "time": "08:30",
     "country": "瑞士",
     "city": "蘇黎世",
@@ -25,7 +11,23 @@
     "lng": 8.5402,
     "ticket_status": "已購票",
     "cost_estimate": 85,
-    "notes": "搭乘 Railjet 景觀跨國特快列車前往奧地利薩爾斯堡，車程約 5.5 小時，沿途欣賞阿爾卑斯湖光山色。"
+    "notes": "搭乘 Railjet 景觀跨國特快列車前往奧地利薩爾斯堡，車程約 5.5 小時，沿途欣賞阿爾卑斯湖光山色。",
+    "completed": false
+  },
+  {
+    "rowIndex": 3,
+    "date": "2026-06-15",
+    "time": "14:15",
+    "country": "奧地利",
+    "city": "薩爾斯堡",
+    "spot_name": "薩爾斯堡中央火車站 (Salzburg Hbf)",
+    "category": "交通",
+    "lat": 47.813,
+    "lng": 13.0456,
+    "ticket_status": "免門票",
+    "cost_estimate": 0,
+    "notes": "抵達薩爾斯堡，先前往老城區飯店 Check-in 卸下行李並稍作休息。",
+    "completed": false
   },
   {
     "rowIndex": 4,
@@ -39,35 +41,8 @@
     "lng": 13.0425,
     "ticket_status": "免門票",
     "cost_estimate": 0,
-    "notes": "《真善美》電影名場景「Do-Re-Mi」飛馬噴泉與侏儒花園，夕陽灑在花園與遠處城堡超級浪漫！"
-  },
-  {
-    "rowIndex": 5,
-    "date": "2026-06-16",
-    "time": "09:00",
-    "country": "奧地利",
-    "city": "薩爾斯堡",
-    "spot_name": "高地薩爾斯堡要塞 (Festung Hohensalzburg)",
-    "category": "景點",
-    "lat": 47.795,
-    "lng": 13.0474,
-    "ticket_status": "已購票",
-    "cost_estimate": 14,
-    "notes": "搭乘登山纜車直達山頂要塞，鳥瞰整座薩爾斯堡老城、薩爾察赫河與連綿雪山全景。"
-  },
-  {
-    "rowIndex": 6,
-    "date": "2026-06-16",
-    "time": "12:30",
-    "country": "奧地利",
-    "city": "薩爾斯堡",
-    "spot_name": "蓋特萊德巷 & 莫札特出生地 (Getreidegasse)",
-    "category": "購物",
-    "lat": 47.7999,
-    "lng": 13.0433,
-    "ticket_status": "需購票",
-    "cost_estimate": 12,
-    "notes": "漫步欣賞歷史悠久的手工鍛鐵招牌，參觀莫札特故居，順道品嚐道地奧地利炸牛排 (Schnitzel)。"
+    "notes": "《真善美》電影名場景「Do-Re-Mi」飛馬噴泉與侏儒花園，夕陽灑在花園與遠處城堡超級浪漫！",
+    "completed": false
   },
   {
     "rowIndex": 7,
@@ -81,7 +56,8 @@
     "lng": 13.0468,
     "ticket_status": "免門票",
     "cost_estimate": 5,
-    "notes": "壯觀的巴洛克風格穹頂與宏偉管風琴，這裡是莫札特受洗並擔任管風琴師的聖殿。"
+    "notes": "壯觀的巴洛克風格穹頂與宏偉管風琴，這裡是莫札特受洗並擔任管風琴師的聖殿。",
+    "completed": false
   },
   {
     "rowIndex": 8,
@@ -95,7 +71,8 @@
     "lng": 13.308,
     "ticket_status": "已購票",
     "cost_estimate": 16,
-    "notes": "自薩爾斯堡火車站搭 150 號公車前往巴德伊舍 (Bad Ischl)，換火車抵達哈修塔特站，再搭乘經典木造渡輪橫渡湖泊。"
+    "notes": "自薩爾斯堡火車站搭 150 號公車前往巴德伊舍 (Bad Ischl)，換火車抵達哈修塔特站，再搭乘經典木造渡輪橫渡湖泊。",
+    "completed": false
   },
   {
     "rowIndex": 9,
@@ -109,7 +86,8 @@
     "lng": 13.65,
     "ticket_status": "免門票",
     "cost_estimate": 0,
-    "notes": "世界文化遺產必拍！經典木造木屋、清澈湖水與福音基督教堂尖塔倒影，上午光線最佳。"
+    "notes": "世界文化遺產必拍！經典木造木屋、清澈湖水與福音基督教堂尖塔倒影，上午光線最佳。",
+    "completed": false
   },
   {
     "rowIndex": 10,
@@ -123,7 +101,8 @@
     "lng": 13.6428,
     "ticket_status": "需預約",
     "cost_estimate": 40,
-    "notes": "搭乘天際斜坡纜車，登上懸空景觀台 Skywalk，並穿著礦工防護服體驗 64 公尺長的地下木滑梯！"
+    "notes": "搭乘天際斜坡纜車，登上懸空景觀台 Skywalk，並穿著礦工防護服體驗 64 公尺長的地下木滑梯！",
+    "completed": false
   },
   {
     "rowIndex": 11,
@@ -137,6 +116,7 @@
     "lng": 13.6492,
     "ticket_status": "免門票",
     "cost_estimate": 18,
-    "notes": "在童話般的彩繪木屋廣場漫步，找間湖畔露天咖啡廳品嚐現烤奧地利蘋果卷 (Apfelstrudel) 配黑咖啡。"
+    "notes": "在童話般的彩繪木屋廣場漫步，找間湖畔露天咖啡廳品嚐現烤奧地利蘋果卷 (Apfelstrudel) 配黑咖啡。",
+    "completed": false
   }
 ]

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, MapPin, Search, Calendar, Clock, DollarSign, Tag, FileText } from 'lucide-react';
+import { X, Save, MapPin, Search, Calendar, Clock, DollarSign, Tag, FileText, Check } from 'lucide-react';
 import { ItineraryItem } from '@/types';
 
 interface EditItineraryModalProps {
@@ -71,8 +71,14 @@ export default function EditItineraryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col font-sans">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs cursor-pointer"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="relative w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col font-sans cursor-default"
+      >
         {/* 頂部標題 */}
         <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
           <div className="flex items-center gap-2">
@@ -245,6 +251,32 @@ export default function EditItineraryModal({
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               placeholder="例：預約編號 #FR-1234，需提早 15 分鐘在北門集合..."
             />
+          </div>
+
+          {/* 行程探索狀態 (探索中 / 已解鎖) */}
+          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+            <div>
+              <span className="block text-xs font-bold text-slate-700">行程探索狀態</span>
+              <span className="text-[11px] text-slate-600">已解鎖將收納至「已解鎖 Collected」分頁並呈現灰階</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleChange('completed', !formData.completed)}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                formData.completed
+                  ? 'bg-emerald-500 text-white shadow-2xs hover:bg-emerald-600'
+                  : 'bg-white border border-slate-300 text-slate-600 hover:border-slate-400'
+              }`}
+            >
+              {formData.completed ? (
+                <>
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>已解鎖 Collected</span>
+                </>
+              ) : (
+                <span>🥐 探索中 Exploring</span>
+              )}
+            </button>
           </div>
 
           {/* 送出與取消按鈕 */}

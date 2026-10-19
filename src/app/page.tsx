@@ -50,6 +50,9 @@ export default function Home() {
   const [isExpensesListOpen, setIsExpensesListOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
+  // 行程篩選分頁狀態：'pending' (探索中) | 'completed' (已解鎖) | 'all' (全行程)
+  const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'all'>('pending');
+
   // 1. 取得使用者即時 GPS 定位
   useEffect(() => {
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
@@ -185,6 +188,29 @@ export default function Home() {
     );
   };
 
+  // 切換行程完成/已解鎖狀態（樂觀更新 + 後端持久化）
+  const handleToggleComplete = async (spot: ItineraryItem) => {
+    const nextCompleted = !spot.completed;
+    const updatedSpot = { ...spot, completed: nextCompleted };
+
+    // 樂觀更新
+    setItinerary(prev =>
+      prev.map(item => (item.rowIndex === spot.rowIndex ? updatedSpot : item))
+    );
+
+    try {
+      const res = await fetch('/api/itinerary', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedSpot),
+      });
+      if (!res.ok) throw new Error('更新完成狀態失敗');
+    } catch (err) {
+      console.error('Failed to toggle completion status:', err);
+      fetchItinerary();
+    }
+  };
+
   // 新增行程點
   const handleAddItinerary = async (newItem: Omit<ItineraryItem, 'rowIndex'>) => {
     const res = await fetch('/api/itinerary', {
@@ -201,6 +227,14 @@ export default function Home() {
   const handleExpenseAdded = (newExp: ExpenseItem) => {
     setExpenses(prev => [newExp, ...prev]);
   };
+
+  // 依據當前分頁篩選在地圖上顯示的行程點
+  const displayedItinerary =
+    activeTab === 'pending'
+      ? itinerary.filter(item => !item.completed)
+      : activeTab === 'completed'
+      ? itinerary.filter(item => item.completed)
+      : itinerary;
 
   return (
     <div className="min-h-screen bg-white text-slate-800 flex flex-col font-sans selection:bg-sky-100 selection:text-sky-900">
@@ -221,11 +255,12 @@ export default function Home() {
       <main className="max-w-6xl mx-auto px-4 w-full flex-1">
         <div className="mt-2">
           <InteractiveMap
-            itinerary={itinerary}
+            itinerary={displayedItinerary}
             expenses={expenses}
             userLocation={userLocation}
             selectedSpot={selectedSpot}
             onSelectSpot={spot => setSelectedSpot(spot)}
+            activeTab={activeTab}
           />
         </div>
 
@@ -242,6 +277,10 @@ export default function Home() {
             onSelectSpot={spot => setSelectedSpot(spot)}
             onEditSpot={spot => setEditingSpot(spot)}
             onReorder={handleReorder}
+            onToggleComplete={handleToggleComplete}
+            onOpenAddModal={() => setIsAddOpen(true)}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
           />
         )}
       </main>

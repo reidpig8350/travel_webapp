@@ -109,7 +109,7 @@ export async function getItinerary(): Promise<{ items: ItineraryItem[]; source: 
     const { sheets, spreadsheetId } = await getSheetsClient();
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Itinerary!A2:K',
+      range: 'Itinerary!A2:L',
     });
 
     const rows = res.data.values || [];
@@ -126,6 +126,7 @@ export async function getItinerary(): Promise<{ items: ItineraryItem[]; source: 
       ticket_status: row[8] || '免門票',
       cost_estimate: parseFloat(row[9]) || 0,
       notes: row[10] || '',
+      completed: row[11] === 'TRUE' || row[11] === 'true' || row[11] === true || false,
     }));
 
     // 若 Google Sheet 尚無資料，自動以 Mock 資料回傳
@@ -152,28 +153,35 @@ export async function updateItineraryRow(rowIndex: number, item: Partial<Itinera
   }
 
   const { sheets, spreadsheetId } = await getSheetsClient();
-  const range = `Itinerary!A${rowIndex}:K${rowIndex}`;
-  const values = [
-    [
-      item.date ?? '',
-      item.time ?? '',
-      item.country ?? '',
-      item.city ?? '',
-      item.spot_name ?? '',
-      item.category ?? '景點',
-      item.lat ?? '',
-      item.lng ?? '',
-      item.ticket_status ?? '',
-      item.cost_estimate ?? 0,
-      item.notes ?? '',
-    ],
+  const range = `Itinerary!A${rowIndex}:L${rowIndex}`;
+
+  // 先讀取原該列，做 partial merge，以防部分更新遺失原有欄位
+  const getRes = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+  });
+  const existing = getRes.data.values?.[0] || [];
+
+  const merged = [
+    item.date !== undefined ? item.date : (existing[0] ?? ''),
+    item.time !== undefined ? item.time : (existing[1] ?? ''),
+    item.country !== undefined ? item.country : (existing[2] ?? ''),
+    item.city !== undefined ? item.city : (existing[3] ?? ''),
+    item.spot_name !== undefined ? item.spot_name : (existing[4] ?? ''),
+    item.category !== undefined ? item.category : (existing[5] ?? '景點'),
+    item.lat !== undefined ? item.lat : (existing[6] ?? ''),
+    item.lng !== undefined ? item.lng : (existing[7] ?? ''),
+    item.ticket_status !== undefined ? item.ticket_status : (existing[8] ?? ''),
+    item.cost_estimate !== undefined ? item.cost_estimate : (existing[9] ?? 0),
+    item.notes !== undefined ? item.notes : (existing[10] ?? ''),
+    item.completed !== undefined ? (item.completed ? 'TRUE' : 'FALSE') : (existing[11] ?? 'FALSE'),
   ];
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range,
     valueInputOption: 'USER_ENTERED',
-    requestBody: { values },
+    requestBody: { values: [merged] },
   });
 }
 
@@ -201,12 +209,13 @@ export async function addItineraryRow(item: Omit<ItineraryItem, 'rowIndex'>): Pr
       item.ticket_status,
       item.cost_estimate,
       item.notes,
+      item.completed ? 'TRUE' : 'FALSE',
     ],
   ];
 
   const res = await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: 'Itinerary!A:K',
+    range: 'Itinerary!A:L',
     valueInputOption: 'USER_ENTERED',
     requestBody: { values },
   });
@@ -365,19 +374,19 @@ export async function syncMockDataToGoogleSheet(): Promise<{ success: boolean; m
 
     // 2. 寫入標題列與範例行程
     const itineraryHeaders = [
-      '日期', '時間', '國家', '城市', '景點名稱', '類別', '緯度', '經度', '門票狀態', '預估費用', '備註提醒',
+      '日期', '時間', '國家', '城市', '景點名稱', '類別', '緯度', '經度', '門票狀態', '預估費用', '備註提醒', '已完成',
     ];
     const mockItinerary = readMockItinerary();
     const itineraryRows = [
       itineraryHeaders,
       ...mockItinerary.map(i => [
-        i.date, i.time, i.country, i.city, i.spot_name, i.category, i.lat, i.lng, i.ticket_status, i.cost_estimate, i.notes,
+        i.date, i.time, i.country, i.city, i.spot_name, i.category, i.lat, i.lng, i.ticket_status, i.cost_estimate, i.notes, i.completed ? 'TRUE' : 'FALSE',
       ]),
     ];
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Itinerary!A1:K',
+      range: 'Itinerary!A1:L',
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: itineraryRows },
     });
@@ -402,8 +411,8 @@ export async function syncMockDataToGoogleSheet(): Promise<{ success: boolean; m
     });
 
     return { success: true, message: '成功初始化 Google Sheet 工作表並同步三天行程與記帳資料！' };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Failed to sync to Google Sheet:', err);
-    return { success: false, message: err?.message || '同步失敗' };
+    return { success: false, message: (err as Error)?.message || '同步失敗' };
   }
 }

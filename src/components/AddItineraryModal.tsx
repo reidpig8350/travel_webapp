@@ -81,8 +81,14 @@ export default function AddItineraryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col font-sans">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs cursor-pointer"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="relative w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col font-sans cursor-default"
+      >
         {/* 頂部標題 */}
         <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
           <div className="flex items-center gap-2">
