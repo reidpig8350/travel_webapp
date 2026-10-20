@@ -12,7 +12,7 @@
     "ticket_status": "已購票",
     "cost_estimate": 85,
     "notes": "搭乘 Railjet 景觀跨國特快列車前往奧地利薩爾斯堡，車程約 5.5 小時，沿途欣賞阿爾卑斯湖光山色。",
-    "completed": true
+    "completed": false
   },
   {
     "rowIndex": 3,
@@ -27,7 +27,7 @@
     "ticket_status": "免門票",
     "cost_estimate": 0,
     "notes": "《真善美》電影名場景「Do-Re-Mi」飛馬噴泉與侏儒花園，夕陽灑在花園與遠處城堡超級浪漫！",
-    "completed": false
+    "completed": true
   },
   {
     "rowIndex": 4,

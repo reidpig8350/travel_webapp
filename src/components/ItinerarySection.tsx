@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { GripVertical, Clock, MapPin, Ticket, Sparkles, Check, Navigation, CheckCircle2 } from 'lucide-react';
 import { ItineraryItem } from '@/types';
+import { appConfig } from '@/config';
 
 interface ItinerarySectionProps {
   itinerary: ItineraryItem[];
@@ -15,6 +16,10 @@ interface ItinerarySectionProps {
   onToggleComplete: (spot: ItineraryItem) => void;
   activeTab?: 'pending' | 'completed' | 'all';
   onTabChange?: (tab: 'pending' | 'completed' | 'all') => void;
+  /**
+   * 長按卡片開啟編輯的毫秒數，預設使用 appConfig.ui.cardLongPressDurationMs (500ms)
+   */
+  longPressDurationMs?: number;
 }
 
 // 分類小標籤色彩
@@ -45,6 +50,7 @@ export default function ItinerarySection({
   onToggleComplete,
   activeTab: controlledActiveTab,
   onTabChange,
+  longPressDurationMs = appConfig.ui.cardLongPressDurationMs,
 }: ItinerarySectionProps) {
   // 分頁狀態：支援外部控制（controlled）或內部狀態
   const [internalTab, setInternalTab] = useState<'pending' | 'completed' | 'all'>('pending');
@@ -62,7 +68,7 @@ export default function ItinerarySection({
       ? completedItems
       : itinerary;
 
-  // 0.5 秒長按編輯狀態管理
+  // 長按編輯狀態管理（依據 longPressDurationMs 設定）
   const [pressingItemKey, setPressingItemKey] = useState<string | null>(null);
   const [isPressFilled, setIsPressFilled] = useState<boolean>(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -103,18 +109,18 @@ export default function ItinerarySection({
     setPressingItemKey(itemKey);
     setIsPressFilled(false);
 
-    // 下一影格觸發 scaleX(1) 啟動 0.5s 平滑過渡動畫
+    // 下一影格觸發 scaleX(1) 啟動平滑過渡動畫
     animFrameRef.current = requestAnimationFrame(() => {
       setIsPressFilled(true);
     });
 
-    // 0.5 秒（500ms）後觸發編輯視窗
+    // 達到 longPressDurationMs 後觸發編輯視窗
     longPressTimerRef.current = setTimeout(() => {
       isLongPressTriggeredRef.current = true;
       cancelLongPress();
       onSelectSpot(item);
       onEditSpot(item);
-    }, 500);
+    }, longPressDurationMs);
   };
 
   // 滑動或移出卡片時取消長按（防捲動誤觸）
@@ -122,13 +128,16 @@ export default function ItinerarySection({
     if (!touchStartPosRef.current) return;
     const deltaX = Math.abs(e.clientX - touchStartPosRef.current.x);
     const deltaY = Math.abs(e.clientY - touchStartPosRef.current.y);
-    // 移動超過 10px 視為使用者正在捲動頁面
-    if (deltaX > 10 || deltaY > 10) {
+    // 移動超過門檻視為使用者正在捲動頁面
+    if (
+      deltaX > appConfig.ui.longPressMoveCancelThresholdPx ||
+      deltaY > appConfig.ui.longPressMoveCancelThresholdPx
+    ) {
       cancelLongPress();
     }
   };
 
-  // 放開卡片：未滿 0.5s 視為單擊（聚焦景點 + 地圖移動）
+  // 放開卡片：未滿長按時間視為單擊（聚焦景點 + 地圖移動）
   const handlePointerUp = (item: ItineraryItem) => {
     if (!isLongPressTriggeredRef.current && touchStartPosRef.current) {
       // 屬於單擊聚焦
@@ -348,13 +357,13 @@ export default function ItinerarySection({
                                 : 'bg-white border-slate-200 hover:border-sky-300 hover:shadow-xs'
                             }`}
                           >
-                            {/* 長按 0.5 秒從左往右平滑填滿的淺藍色背景動畫 */}
+                            {/* 長按時從左往右平滑填滿的淺藍色背景動畫 */}
                             {pressingItemKey === itemKey && (
                               <div
                                 className="absolute inset-0 bg-sky-200/50 pointer-events-none origin-left transition-transform ease-linear"
                                 style={{
                                   transform: isPressFilled ? 'scaleX(1)' : 'scaleX(0)',
-                                  transitionDuration: isPressFilled ? '500ms' : '150ms',
+                                  transitionDuration: isPressFilled ? `${longPressDurationMs}ms` : '150ms',
                                 }}
                               />
                             )}
