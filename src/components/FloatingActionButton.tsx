@@ -7,6 +7,7 @@ interface FloatingActionButtonProps {
   onOpenExpense: () => void;
   onOpenAddSpot: () => void;
   onOpenExpensesList: () => void;
+  onOpenShopping?: () => void;
   expenseCount: number;
 }
 
@@ -14,6 +15,7 @@ export default function FloatingActionButton({
   onOpenExpense,
   onOpenAddSpot,
   onOpenExpensesList,
+  onOpenShopping,
   expenseCount,
 }: FloatingActionButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -32,6 +34,23 @@ export default function FloatingActionButton({
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
         {isOpen && (
           <div className="flex flex-col items-end gap-2.5 mb-3 animate-in fade-in slide-in-from-bottom-3 duration-200">
+            {/* 0. 購物模式 (計算機 + 即時翻譯) */}
+            {onOpenShopping && (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenShopping();
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-bold text-xs shadow-lg shadow-amber-500/30 ring-2 ring-white transition-all cursor-pointer"
+              >
+                <span>🛍️</span>
+                <span>購物模式</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-white/25 text-[10px] font-bold">
+                  計算/翻譯
+                </span>
+              </button>
+            )}
+
             {/* 1. 記帳明細 */}
             <button
               onClick={() => {

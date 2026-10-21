@@ -10,6 +10,9 @@ interface ExpenseModalProps {
   userLocation: { lat: number; lng: number } | null;
   rates: ExchangeRates;
   onExpenseAdded: (newExpense: ExpenseItem) => void;
+  initialAmount?: string;
+  initialCurrency?: 'EUR' | 'CHF' | 'GBP' | 'TWD';
+  initialCategory?: '美食' | '交通' | '門票' | '住宿' | '購物' | '其他';
 }
 
 export default function ExpenseModal({
@@ -18,11 +21,14 @@ export default function ExpenseModal({
   userLocation,
   rates,
   onExpenseAdded,
+  initialAmount = '',
+  initialCurrency = 'EUR',
+  initialCategory = '美食',
 }: ExpenseModalProps) {
   const [item, setItem] = useState('');
-  const [category, setCategory] = useState<'美食' | '交通' | '門票' | '住宿' | '購物' | '其他'>('美食');
-  const [amountOrig, setAmountOrig] = useState('');
-  const [currency, setCurrency] = useState<'EUR' | 'CHF' | 'GBP' | 'TWD'>('EUR');
+  const [category, setCategory] = useState<'美食' | '交通' | '門票' | '住宿' | '購物' | '其他'>(initialCategory);
+  const [amountOrig, setAmountOrig] = useState(initialAmount);
+  const [currency, setCurrency] = useState<'EUR' | 'CHF' | 'GBP' | 'TWD'>(initialCurrency);
   const [paymentType, setPaymentType] = useState<'Apple Pay' | '信用卡' | '現金'>('Apple Pay');
   const [notes, setNotes] = useState('');
   const [locationName, setLocationName] = useState('定位查詢中...');
@@ -33,7 +39,9 @@ export default function ExpenseModal({
   useEffect(() => {
     if (isOpen) {
       setItem('');
-      setAmountOrig('');
+      setAmountOrig(initialAmount);
+      setCurrency(initialCurrency);
+      setCategory(initialCategory);
       setNotes('');
       setPhotoPreview(null);
 

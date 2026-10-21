@@ -9,6 +9,7 @@ interface HeaderProps {
   userCity: string;
   isGoogleConnected: boolean;
   onOpenSettings: () => void;
+  onOpenShopping?: () => void;
   onOpenExpensesList?: () => void;
   expenseCount?: number;
 }
@@ -18,6 +19,7 @@ export default function Header({
   userCity,
   isGoogleConnected,
   onOpenSettings,
+  onOpenShopping,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-100 px-4 py-3 shadow-xs">
@@ -57,6 +59,18 @@ export default function Header({
                 </span>
               )}
             </div>
+          )}
+
+          {/* 購物小幫手模式 (計算機 + 翻譯) */}
+          {onOpenShopping && (
+            <button
+              onClick={onOpenShopping}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50/90 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+              title="開啟購物模式 (匯率計算機與即時翻譯)"
+            >
+              <span className="text-sm">🛍️</span>
+              <span>購物模式</span>
+            </button>
           )}
 
           {/* Google Sheets 連線狀態與設定鈕 */}

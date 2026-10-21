@@ -12,6 +12,7 @@ import ExpenseModal from '@/components/ExpenseModal';
 import ExpensesListModal from '@/components/ExpensesListModal';
 import SheetSettingsModal from '@/components/SheetSettingsModal';
 import FloatingActionButton from '@/components/FloatingActionButton';
+import ShoppingModal from '@/components/ShoppingModal';
 import { ItineraryItem, ExpenseItem, WeatherInfo, ExchangeRates } from '@/types';
 
 // 動態載入 Leaflet 地圖，防止 SSR Hydration 錯誤
@@ -49,6 +50,11 @@ export default function Home() {
   const [isExpenseOpen, setIsExpenseOpen] = useState<boolean>(false);
   const [isExpensesListOpen, setIsExpensesListOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isShoppingOpen, setIsShoppingOpen] = useState<boolean>(false);
+  const [prefilledExpense, setPrefilledExpense] = useState<{ amount: string; currency: 'EUR' | 'CHF' }>({
+    amount: '',
+    currency: 'EUR',
+  });
 
   // 行程篩選分頁狀態：'pending' (探索中) | 'completed' (已解鎖) | 'all' (全行程)
   const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'all'>('pending');
@@ -244,6 +250,7 @@ export default function Home() {
         userCity={userCity}
         isGoogleConnected={isGoogleConnected}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenShopping={() => setIsShoppingOpen(true)}
         onOpenExpensesList={() => setIsExpensesListOpen(true)}
         expenseCount={expenses.length}
       />
@@ -285,11 +292,15 @@ export default function Home() {
         )}
       </main>
 
-      {/* 浮動十字操作按鈕 (內含：記帳明細、新增踩點、即時記帳) */}
+      {/* 浮動十字操作按鈕 (內含：購物模式、記帳明細、新增踩點、即時記帳) */}
       <FloatingActionButton
-        onOpenExpense={() => setIsExpenseOpen(true)}
+        onOpenExpense={() => {
+          setPrefilledExpense({ amount: '', currency: 'EUR' });
+          setIsExpenseOpen(true);
+        }}
         onOpenAddSpot={() => setIsAddOpen(true)}
         onOpenExpensesList={() => setIsExpensesListOpen(true)}
+        onOpenShopping={() => setIsShoppingOpen(true)}
         expenseCount={expenses.length}
       />
 
@@ -308,12 +319,30 @@ export default function Home() {
         onAdd={handleAddItinerary}
       />
 
+      {/* 購物模式 Modal (計算機 + 即時翻譯) */}
+      <ShoppingModal
+        isOpen={isShoppingOpen}
+        onClose={() => setIsShoppingOpen(false)}
+        rates={rates}
+        onTransferToExpense={(amount, currency) => {
+          setPrefilledExpense({ amount: amount.toString(), currency });
+          setIsShoppingOpen(false);
+          setIsExpenseOpen(true);
+        }}
+      />
+
       {/* 記帳 Modal */}
       <ExpenseModal
         isOpen={isExpenseOpen}
-        onClose={() => setIsExpenseOpen(false)}
+        onClose={() => {
+          setIsExpenseOpen(false);
+          setPrefilledExpense({ amount: '', currency: 'EUR' });
+        }}
         userLocation={userLocation}
         rates={rates}
+        initialAmount={prefilledExpense.amount}
+        initialCurrency={prefilledExpense.currency}
+        initialCategory={prefilledExpense.amount ? '購物' : '美食'}
         onExpenseAdded={handleExpenseAdded}
       />
 
