@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { GripVertical, Clock, MapPin, Ticket, Sparkles, Check, Navigation, CheckCircle2 } from 'lucide-react';
+import { GripVertical, Clock, MapPin, Ticket, Sparkles, Check, Navigation, CheckCircle2, Trash2 } from 'lucide-react';
 import { ItineraryItem } from '@/types';
 import { appConfig } from '@/config';
 
@@ -14,6 +14,7 @@ interface ItinerarySectionProps {
   onReorder: (sourceIndex: number, destinationIndex: number) => void;
   onOpenAddModal?: () => void;
   onToggleComplete: (spot: ItineraryItem) => void;
+  onDeleteSpot?: (spot: ItineraryItem) => void;
   activeTab?: 'pending' | 'completed' | 'all';
   onTabChange?: (tab: 'pending' | 'completed' | 'all') => void;
   /**
@@ -48,6 +49,7 @@ export default function ItinerarySection({
   onReorder,
   onOpenAddModal,
   onToggleComplete,
+  onDeleteSpot,
   activeTab: controlledActiveTab,
   onTabChange,
   longPressDurationMs = appConfig.ui.cardLongPressDurationMs,
@@ -466,8 +468,27 @@ export default function ItinerarySection({
                               )}
                             </div>
 
-                            {/* 右側：Google Maps 導航按鈕、最右側打勾 Checkbox 按鈕 */}
-                            <div className="relative z-10 flex items-center gap-2 sm:gap-2.5 shrink-0">
+                            {/* 右側：刪除按鈕、Google Maps 導航按鈕、最右側打勾 Checkbox 按鈕 */}
+                            <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 shrink-0">
+                              {/* 刪除行程卡片按鈕 */}
+                              {onDeleteSpot && (
+                                <button
+                                  type="button"
+                                  onPointerDown={e => e.stopPropagation()}
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    if (window.confirm(`確定要刪除「${item.spot_name}」嗎？此操作無法復原。`)) {
+                                      onDeleteSpot(item);
+                                    }
+                                  }}
+                                  className="p-1.5 sm:p-2 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                                  title="刪除"
+                                  aria-label={`刪除行程：${item.spot_name}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                </button>
+                              )}
+
                               {/* Google Maps 一鍵路線導航 */}
                               <button
                                 type="button"

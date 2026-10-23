@@ -6,6 +6,14 @@ import { ItineraryItem, ExpenseItem } from '@/types';
 const MOCK_ITINERARY_PATH = path.join(process.cwd(), 'data', 'mock_itinerary.json');
 const MOCK_EXPENSES_PATH = path.join(process.cwd(), 'data', 'mock_expenses.json');
 
+export const ITINERARY_HEADERS = [
+  '日期', '時間', '國家', '城市', '景點名稱', '類別', '緯度', '經度', '門票狀態', '預估費用', '備註提醒', '已完成',
+];
+
+export const EXPENSES_HEADERS = [
+  '記錄時間', '消費項目', '消費類別', '當地金額', '幣別', '兌台幣匯率', '折合台幣', '支付方式', '緯度', '經度', '地點名稱', '備註備忘',
+];
+
 // 讀取/寫入 Mock 檔案的輔助函式
 export function readMockItinerary(): ItineraryItem[] {
   try {
@@ -47,17 +55,76 @@ export function writeMockExpenses(items: ExpenseItem[]): void {
   }
 }
 
+/**
+ * 解析環境變數中的 GOOGLE_SPREADSHEET_ID
+ * 支援直接貼上完整 Google Sheet 網址（如 https://docs.google.com/spreadsheets/d/1BxiMVs.../edit）或單純的 Unique ID
+ */
+export function parseSpreadsheetId(rawInput?: string): string | null {
+  if (!rawInput) return null;
+  const trimmed = rawInput.trim();
+  if (
+    !trimmed ||
+    trimmed === 'your_google_spreadsheet_id_here' ||
+    trimmed === 'your_google_spreadsheet_url_or_id_here'
+  ) {
+    return null;
+  }
+  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : trimmed;
+}
+
+/**
+ * 取得環境變數設定的預設旅行分頁名稱
+ */
+export function getDefaultTripName(): string {
+  const envTrip = process.env.GOOGLE_SHEET_DEFAULT_TRIP?.trim();
+  return envTrip || '歐洲行_2026';
+}
+
+/**
+ * 依據旅行名稱取得配對的「行程分頁」與「記帳分頁」名稱
+ * 例如：旅行名稱「歐洲行_2026」 ➔ 行程分頁「歐洲行_2026」、記帳分頁「歐洲行_2026_Expenses」
+ * 同時向下相容舊版預設分頁「Itinerary」與「Expenses」
+ */
+export function getTripSheetNames(tripName?: string): {
+  trip: string;
+  itineraryTab: string;
+  expensesTab: string;
+} {
+  const trip = tripName?.trim() || getDefaultTripName();
+  if (trip.toLowerCase() === 'itinerary') {
+    return {
+      trip: 'Itinerary',
+      itineraryTab: 'Itinerary',
+      expensesTab: 'Expenses',
+    };
+  }
+  return {
+    trip,
+    itineraryTab: trip,
+    expensesTab: `${trip}_Expenses`,
+  };
+}
+
+/**
+ * 安全組裝 Google Sheets A1 Notation Range（處理中文、空白與單引號）
+ */
+export function formatSheetRange(tabName: string, cellRange: string): string {
+  const escaped = tabName.replace(/'/g, "''");
+  return `'${escaped}'!${cellRange}`;
+}
+
 // 判斷 Google Sheets 是否配置齊全
 export function isGoogleSheetsConfigured(): boolean {
-  const sheetId = process.env.GOOGLE_SPREADSHEET_ID;
-  const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  const sheetId = parseSpreadsheetId(process.env.GOOGLE_SPREADSHEET_ID);
+  const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.trim();
   return Boolean(sheetId && key);
 }
 
 // 建立 Google Sheets API 客戶端
 async function getSheetsClient(): Promise<{ sheets: sheets_v4.Sheets; spreadsheetId: string }> {
-  const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-  const keySource = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  const spreadsheetId = parseSpreadsheetId(process.env.GOOGLE_SPREADSHEET_ID);
+  const keySource = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.trim();
 
   if (!spreadsheetId || !keySource) {
     throw new Error('Google Sheets credentials not provided in environment variables.');
@@ -65,10 +132,14 @@ async function getSheetsClient(): Promise<{ sheets: sheets_v4.Sheets; spreadshee
 
   let credentials;
   // 判斷 keySource 是檔案路徑、JSON 字串還是 Base64 字串
-  if (keySource.trim().startsWith('{')) {
+  const resolvedKeyPath = fs.existsSync(keySource)
+    ? keySource
+    : path.resolve(/*turbopackIgnore: true*/ process.cwd(), keySource);
+
+  if (keySource.startsWith('{')) {
     credentials = JSON.parse(keySource);
-  } else if (fs.existsSync(keySource)) {
-    const raw = fs.readFileSync(keySource, 'utf-8');
+  } else if (fs.existsSync(resolvedKeyPath)) {
+    const raw = fs.readFileSync(resolvedKeyPath, 'utf-8');
     credentials = JSON.parse(raw);
   } else {
     // 嘗試 Base64 解碼
@@ -96,20 +167,128 @@ async function getSheetTabId(sheets: sheets_v4.Sheets, spreadsheetId: string, ti
   return sheet?.properties?.sheetId ?? 0;
 }
 
-// ==========================================
-// 行程管理 (Itinerary)
-// ==========================================
-
-export async function getItinerary(): Promise<{ items: ItineraryItem[]; source: 'google_sheets' | 'mock' }> {
+/**
+ * 取得 Google Sheet 中所有可用的「旅行分頁」清單
+ * 自動過濾掉 `*_Expenses`、`Expenses` 與預設空白工作表 (`Sheet1`, `工作表1`)
+ */
+export async function getAvailableTrips(): Promise<string[]> {
+  const defaultTrip = getDefaultTripName();
   if (!isGoogleSheetsConfigured()) {
-    return { items: readMockItinerary(), source: 'mock' };
+    return [defaultTrip];
   }
 
   try {
     const { sheets, spreadsheetId } = await getSheetsClient();
+    const meta = await sheets.spreadsheets.get({ spreadsheetId });
+    const allTitles = (meta.data.sheets?.map(s => s.properties?.title).filter(Boolean) as string[]) || [];
+
+    const tripTabs = allTitles.filter(title => {
+      const lower = title.toLowerCase();
+      if (lower === 'expenses' || lower.endsWith('_expenses')) return false;
+      if ((lower === 'sheet1' || title === '工作表1') && title !== defaultTrip) return false;
+      return true;
+    });
+
+    if (tripTabs.length === 0) {
+      return [defaultTrip];
+    }
+    return tripTabs;
+  } catch (err) {
+    console.error('Failed to list available trips from Google Sheets:', err);
+    return [defaultTrip];
+  }
+}
+
+/**
+ * 確保指定旅行的行程分頁與記帳分頁皆已存在；若不存在則自動建立並填入標題列
+ */
+async function ensureTripSheetsExist(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tripName?: string
+): Promise<{ itineraryTab: string; expensesTab: string }> {
+  const { itineraryTab, expensesTab } = getTripSheetNames(tripName);
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const existingTitles = (meta.data.sheets?.map(s => s.properties?.title).filter(Boolean) as string[]) || [];
+
+  const createdItinerary = !existingTitles.includes(itineraryTab);
+  const createdExpenses = !existingTitles.includes(expensesTab);
+
+  const requests: sheets_v4.Schema$Request[] = [];
+  if (createdItinerary) {
+    requests.push({ addSheet: { properties: { title: itineraryTab } } });
+  }
+  if (createdExpenses) {
+    requests.push({ addSheet: { properties: { title: expensesTab } } });
+  }
+
+  if (requests.length > 0) {
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
+  }
+
+  if (createdItinerary) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: formatSheetRange(itineraryTab, 'A1:L1'),
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [ITINERARY_HEADERS] },
+    });
+  }
+
+  if (createdExpenses) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: formatSheetRange(expensesTab, 'A1:L1'),
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [EXPENSES_HEADERS] },
+    });
+  }
+
+  return { itineraryTab, expensesTab };
+}
+
+// ==========================================
+// 行程管理 (Itinerary)
+// ==========================================
+
+export async function getItinerary(tripName?: string): Promise<{
+  items: ItineraryItem[];
+  source: 'google_sheets' | 'mock';
+  currentTrip: string;
+  availableTrips: string[];
+}> {
+  const { trip, itineraryTab } = getTripSheetNames(tripName);
+
+  if (!isGoogleSheetsConfigured()) {
+    return {
+      items: readMockItinerary(),
+      source: 'mock',
+      currentTrip: trip,
+      availableTrips: [getDefaultTripName()],
+    };
+  }
+
+  try {
+    const { sheets, spreadsheetId } = await getSheetsClient();
+    const availableTrips = await getAvailableTrips();
+
+    // 若指定分頁尚不存在，檢查是否可讀取第一個可用旅行或回傳空陣列
+    const meta = await sheets.spreadsheets.get({ spreadsheetId });
+    const existingTitles = (meta.data.sheets?.map(s => s.properties?.title).filter(Boolean) as string[]) || [];
+
+    if (!existingTitles.includes(itineraryTab)) {
+      // 若該旅行分頁還沒建立過，回傳 Mock 示範行程但標記為 google_sheets 已連線（方便使用者一鍵匯入）
+      return {
+        items: readMockItinerary(),
+        source: 'google_sheets',
+        currentTrip: trip,
+        availableTrips: availableTrips.includes(trip) ? availableTrips : [trip, ...availableTrips],
+      };
+    }
+
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Itinerary!A2:L',
+      range: formatSheetRange(itineraryTab, 'A2:L'),
     });
 
     const rows = res.data.values || [];
@@ -129,19 +308,28 @@ export async function getItinerary(): Promise<{ items: ItineraryItem[]; source: 
       completed: row[11] === 'TRUE' || row[11] === 'true' || row[11] === true || false,
     }));
 
-    // 若 Google Sheet 尚無資料，自動以 Mock 資料回傳
-    if (items.length === 0) {
-      return { items: readMockItinerary(), source: 'mock' };
-    }
-
-    return { items, source: 'google_sheets' };
+    return {
+      items,
+      source: 'google_sheets',
+      currentTrip: trip,
+      availableTrips: availableTrips.includes(trip) ? availableTrips : [trip, ...availableTrips],
+    };
   } catch (err) {
     console.error('Google Sheets getItinerary error, falling back to mock:', err);
-    return { items: readMockItinerary(), source: 'mock' };
+    return {
+      items: readMockItinerary(),
+      source: 'mock',
+      currentTrip: trip,
+      availableTrips: [trip],
+    };
   }
 }
 
-export async function updateItineraryRow(rowIndex: number, item: Partial<ItineraryItem>): Promise<void> {
+export async function updateItineraryRow(
+  rowIndex: number,
+  item: Partial<ItineraryItem>,
+  tripName?: string
+): Promise<void> {
   if (!isGoogleSheetsConfigured()) {
     const items = readMockItinerary();
     const targetIdx = items.findIndex(i => i.rowIndex === rowIndex);
@@ -153,7 +341,8 @@ export async function updateItineraryRow(rowIndex: number, item: Partial<Itinera
   }
 
   const { sheets, spreadsheetId } = await getSheetsClient();
-  const range = `Itinerary!A${rowIndex}:L${rowIndex}`;
+  const { itineraryTab } = await ensureTripSheetsExist(sheets, spreadsheetId, tripName);
+  const range = formatSheetRange(itineraryTab, `A${rowIndex}:L${rowIndex}`);
 
   // 先讀取原該列，做 partial merge，以防部分更新遺失原有欄位
   const getRes = await sheets.spreadsheets.values.get({
@@ -185,7 +374,10 @@ export async function updateItineraryRow(rowIndex: number, item: Partial<Itinera
   });
 }
 
-export async function addItineraryRow(item: Omit<ItineraryItem, 'rowIndex'>): Promise<ItineraryItem> {
+export async function addItineraryRow(
+  item: Omit<ItineraryItem, 'rowIndex'>,
+  tripName?: string
+): Promise<ItineraryItem> {
   if (!isGoogleSheetsConfigured()) {
     const items = readMockItinerary();
     const nextRow = items.length > 0 ? Math.max(...items.map(i => i.rowIndex)) + 1 : 2;
@@ -196,6 +388,7 @@ export async function addItineraryRow(item: Omit<ItineraryItem, 'rowIndex'>): Pr
   }
 
   const { sheets, spreadsheetId } = await getSheetsClient();
+  const { itineraryTab } = await ensureTripSheetsExist(sheets, spreadsheetId, tripName);
   const values = [
     [
       item.date,
@@ -215,20 +408,24 @@ export async function addItineraryRow(item: Omit<ItineraryItem, 'rowIndex'>): Pr
 
   const res = await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: 'Itinerary!A:L',
+    range: formatSheetRange(itineraryTab, 'A:L'),
     valueInputOption: 'USER_ENTERED',
     requestBody: { values },
   });
 
-  const updatedRange = res.data.updates?.updatedRange || 'Itinerary!A2:K2';
-  const match = updatedRange.match(/Itinerary!A(\d+)/);
+  const updatedRange = res.data.updates?.updatedRange || '';
+  const match = updatedRange.match(/!A(\d+)/);
   const rowIndex = match ? parseInt(match[1], 10) : 2;
 
   return { ...item, rowIndex };
 }
 
 // 核心功能：拖拉交換列 / 重新排序
-export async function reorderItinerary(sourceIndex: number, destinationIndex: number): Promise<void> {
+export async function reorderItinerary(
+  sourceIndex: number,
+  destinationIndex: number,
+  tripName?: string
+): Promise<void> {
   // sourceIndex 與 destinationIndex 為前端 0-based 陣列索引
   if (!isGoogleSheetsConfigured()) {
     const items = readMockItinerary();
@@ -241,7 +438,8 @@ export async function reorderItinerary(sourceIndex: number, destinationIndex: nu
   }
 
   const { sheets, spreadsheetId } = await getSheetsClient();
-  const sheetTabId = await getSheetTabId(sheets, spreadsheetId, 'Itinerary');
+  const { itineraryTab } = await ensureTripSheetsExist(sheets, spreadsheetId, tripName);
+  const sheetTabId = await getSheetTabId(sheets, spreadsheetId, itineraryTab);
 
   // Google Sheets API 0-indexed 行索引（第 1 列標題為 index 0，第 2 列行程首行為 index 1）
   const sourceSheetRow = sourceIndex + 1;
@@ -267,20 +465,73 @@ export async function reorderItinerary(sourceIndex: number, destinationIndex: nu
   });
 }
 
+// 刪除行程列 (Row Delete)
+export async function deleteItineraryRow(rowIndex: number, tripName?: string): Promise<void> {
+  if (!isGoogleSheetsConfigured()) {
+    const items = readMockItinerary();
+    const targetIdx = items.findIndex(i => i.rowIndex === rowIndex);
+    if (targetIdx !== -1) {
+      items.splice(targetIdx, 1);
+      // 刪除後將剩餘行程重新編訂 rowIndex（維持與試算表列數一致）
+      const updated = items.map((it, idx) => ({ ...it, rowIndex: idx + 2 }));
+      writeMockItinerary(updated);
+    }
+    return;
+  }
+
+  const { sheets, spreadsheetId } = await getSheetsClient();
+  const { itineraryTab } = await ensureTripSheetsExist(sheets, spreadsheetId, tripName);
+  const sheetTabId = await getSheetTabId(sheets, spreadsheetId, itineraryTab);
+
+  // Google Sheets API 0-indexed 行索引（第 1 列標題為 index 0，第 rowIndex 列為 index: rowIndex - 1）
+  const startSheetRow = rowIndex - 1;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId: sheetTabId,
+              dimension: 'ROWS',
+              startIndex: startSheetRow,
+              endIndex: startSheetRow + 1,
+            },
+          },
+        },
+      ],
+    },
+  });
+}
+
 // ==========================================
 // 記帳管理 (Expenses)
 // ==========================================
 
-export async function getExpenses(): Promise<{ items: ExpenseItem[]; source: 'google_sheets' | 'mock' }> {
+export async function getExpenses(tripName?: string): Promise<{
+  items: ExpenseItem[];
+  source: 'google_sheets' | 'mock';
+  currentTrip: string;
+}> {
+  const { trip, expensesTab } = getTripSheetNames(tripName);
+
   if (!isGoogleSheetsConfigured()) {
-    return { items: readMockExpenses(), source: 'mock' };
+    return { items: readMockExpenses(), source: 'mock', currentTrip: trip };
   }
 
   try {
     const { sheets, spreadsheetId } = await getSheetsClient();
+    const meta = await sheets.spreadsheets.get({ spreadsheetId });
+    const existingTitles = (meta.data.sheets?.map(s => s.properties?.title).filter(Boolean) as string[]) || [];
+
+    if (!existingTitles.includes(expensesTab)) {
+      return { items: [], source: 'google_sheets', currentTrip: trip };
+    }
+
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Expenses!A2:L',
+      range: formatSheetRange(expensesTab, 'A2:L'),
     });
 
     const rows = res.data.values || [];
@@ -301,14 +552,17 @@ export async function getExpenses(): Promise<{ items: ExpenseItem[]; source: 'go
       notes: row[11] || '',
     }));
 
-    return { items, source: 'google_sheets' };
+    return { items, source: 'google_sheets', currentTrip: trip };
   } catch (err) {
     console.error('Google Sheets getExpenses error, falling back to mock:', err);
-    return { items: readMockExpenses(), source: 'mock' };
+    return { items: readMockExpenses(), source: 'mock', currentTrip: trip };
   }
 }
 
-export async function addExpense(expense: Omit<ExpenseItem, 'rowIndex'>): Promise<ExpenseItem> {
+export async function addExpense(
+  expense: Omit<ExpenseItem, 'rowIndex'>,
+  tripName?: string
+): Promise<ExpenseItem> {
   if (!isGoogleSheetsConfigured()) {
     const items = readMockExpenses();
     const newItem: ExpenseItem = { ...expense, rowIndex: items.length + 2 };
@@ -318,6 +572,7 @@ export async function addExpense(expense: Omit<ExpenseItem, 'rowIndex'>): Promis
   }
 
   const { sheets, spreadsheetId } = await getSheetsClient();
+  const { expensesTab } = await ensureTripSheetsExist(sheets, spreadsheetId, tripName);
   const values = [
     [
       expense.timestamp,
@@ -337,7 +592,7 @@ export async function addExpense(expense: Omit<ExpenseItem, 'rowIndex'>): Promis
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: 'Expenses!A:L',
+    range: formatSheetRange(expensesTab, 'A:L'),
     valueInputOption: 'USER_ENTERED',
     requestBody: { values },
   });
@@ -346,73 +601,118 @@ export async function addExpense(expense: Omit<ExpenseItem, 'rowIndex'>): Promis
 }
 
 // ==========================================
-// 初始化 Google Sheet 表格結構與示範資料
+// 初始化 Google Sheet 旅行分頁結構與示範資料
 // ==========================================
 
-export async function syncMockDataToGoogleSheet(): Promise<{ success: boolean; message: string }> {
+export async function syncMockDataToGoogleSheet(
+  tripName?: string,
+  mode: 'mock' | 'empty' = 'mock'
+): Promise<{
+  success: boolean;
+  message: string;
+  trip: string;
+  availableTrips: string[];
+}> {
+  const { trip, itineraryTab, expensesTab } = getTripSheetNames(tripName);
+
   if (!isGoogleSheetsConfigured()) {
-    return { success: false, message: 'Google Sheets credentials not set in environment.' };
+    return {
+      success: false,
+      message: '尚未設定 Google Sheets 環境變數 (GOOGLE_SPREADSHEET_ID 與 GOOGLE_SERVICE_ACCOUNT_KEY)',
+      trip,
+      availableTrips: [trip],
+    };
   }
 
   try {
     const { sheets, spreadsheetId } = await getSheetsClient();
 
-    // 1. 確保工作表分頁存在
-    const meta = await sheets.spreadsheets.get({ spreadsheetId });
-    const existingTitles = meta.data.sheets?.map(s => s.properties?.title) || [];
+    // 1. 確保目標旅行的行程分頁與記帳分頁存在
+    await ensureTripSheetsExist(sheets, spreadsheetId, trip);
 
-    const requests = [];
-    if (!existingTitles.includes('Itinerary')) {
-      requests.push({ addSheet: { properties: { title: 'Itinerary' } } });
-    }
-    if (!existingTitles.includes('Expenses')) {
-      requests.push({ addSheet: { properties: { title: 'Expenses' } } });
-    }
-    if (requests.length > 0) {
-      await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
-    }
+    // 先清空舊範圍資料，避免殘留多餘列
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: formatSheetRange(itineraryTab, 'A1:L'),
+    });
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: formatSheetRange(expensesTab, 'A1:L'),
+    });
 
-    // 2. 寫入標題列與範例行程
-    const itineraryHeaders = [
-      '日期', '時間', '國家', '城市', '景點名稱', '類別', '緯度', '經度', '門票狀態', '預估費用', '備註提醒', '已完成',
-    ];
-    const mockItinerary = readMockItinerary();
+    // 2. 準備寫入行程分頁（標題列 + Mock 行程或空白）
+    const mockItinerary = mode === 'mock' ? readMockItinerary() : [];
     const itineraryRows = [
-      itineraryHeaders,
+      ITINERARY_HEADERS,
       ...mockItinerary.map(i => [
-        i.date, i.time, i.country, i.city, i.spot_name, i.category, i.lat, i.lng, i.ticket_status, i.cost_estimate, i.notes, i.completed ? 'TRUE' : 'FALSE',
+        i.date,
+        i.time,
+        i.country,
+        i.city,
+        i.spot_name,
+        i.category,
+        i.lat,
+        i.lng,
+        i.ticket_status,
+        i.cost_estimate,
+        i.notes,
+        i.completed ? 'TRUE' : 'FALSE',
       ]),
     ];
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Itinerary!A1:L',
+      range: formatSheetRange(itineraryTab, 'A1:L'),
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: itineraryRows },
     });
 
-    // 3. 寫入標題列與範例花費
-    const expensesHeaders = [
-      '記錄時間', '消費項目', '消費類別', '當地金額', '幣別', '兌台幣匯率', '折合台幣', '支付方式', '緯度', '經度', '地點名稱', '備註備忘',
-    ];
-    const mockExpenses = readMockExpenses();
+    // 3. 準備寫入記帳分頁（標題列 + Mock 記帳或空白）
+    const mockExpenses = mode === 'mock' ? readMockExpenses() : [];
     const expenseRows = [
-      expensesHeaders,
+      EXPENSES_HEADERS,
       ...mockExpenses.map(e => [
-        e.timestamp, e.item, e.category, e.amount_orig, e.currency, e.rate_to_twd, e.amount_twd, e.payment_type, e.lat ?? '', e.lng ?? '', e.location_name, e.notes,
+        e.timestamp,
+        e.item,
+        e.category,
+        e.amount_orig,
+        e.currency,
+        e.rate_to_twd,
+        e.amount_twd,
+        e.payment_type,
+        e.lat ?? '',
+        e.lng ?? '',
+        e.location_name,
+        e.notes,
       ]),
     ];
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Expenses!A1:L',
+      range: formatSheetRange(expensesTab, 'A1:L'),
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: expenseRows },
     });
 
-    return { success: true, message: '成功初始化 Google Sheet 工作表並同步三天行程與記帳資料！' };
+    const availableTrips = await getAvailableTrips();
+    const message =
+      mode === 'mock'
+        ? `成功將 Mock 行程與記帳資料上傳至「${itineraryTab}」與「${expensesTab}」分頁！`
+        : `成功建立全新空白旅行分頁「${itineraryTab}」與「${expensesTab}」！`;
+
+    return {
+      success: true,
+      message,
+      trip,
+      availableTrips: availableTrips.includes(trip) ? availableTrips : [trip, ...availableTrips],
+    };
   } catch (err: unknown) {
     console.error('Failed to sync to Google Sheet:', err);
-    return { success: false, message: (err as Error)?.message || '同步失敗' };
+    return {
+      success: false,
+      message: (err as Error)?.message || '同步失敗',
+      trip,
+      availableTrips: [trip],
+    };
   }
 }

@@ -10,6 +10,7 @@ interface ExpenseModalProps {
   userLocation: { lat: number; lng: number } | null;
   rates: ExchangeRates;
   onExpenseAdded: (newExpense: ExpenseItem) => void;
+  currentTrip?: string;
   initialAmount?: string;
   initialCurrency?: 'EUR' | 'CHF' | 'GBP' | 'TWD';
   initialCategory?: '美食' | '交通' | '門票' | '住宿' | '購物' | '其他';
@@ -21,6 +22,7 @@ export default function ExpenseModal({
   userLocation,
   rates,
   onExpenseAdded,
+  currentTrip,
   initialAmount = '',
   initialCurrency = 'EUR',
   initialCategory = '美食',
@@ -98,6 +100,7 @@ export default function ExpenseModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          trip: currentTrip,
           timestamp,
           item,
           category,

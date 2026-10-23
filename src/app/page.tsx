@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, Navigation, RefreshCw } from 'lucide-react';
+import { Navigation, RefreshCw } from 'lucide-react';
 import Header from '@/components/Header';
-import BudgetCroissantBar from '@/components/BudgetCroissantBar';
 import ItinerarySection from '@/components/ItinerarySection';
 import EditItineraryModal from '@/components/EditItineraryModal';
 import AddItineraryModal from '@/components/AddItineraryModal';
@@ -26,12 +25,17 @@ const InteractiveMap = dynamic(() => import('@/components/InteractiveMap'), {
   ),
 });
 
+const ACTIVE_TRIP_STORAGE_KEY = 'euro_trip_active_tab';
+
 export default function Home() {
   // 核心狀態
   const [itinerary, setItinerary] = useState<ItineraryItem[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [currentTrip, setCurrentTrip] = useState<string>('歐洲行_2026');
+  const [availableTrips, setAvailableTrips] = useState<string[]>(['歐洲行_2026']);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [userCity, setUserCity] = useState<string>('瑞士/奧地利');
+  const [userCity, setUserCity] = useState<string>('定位中...');
+  const [isLocating, setIsLocating] = useState<boolean>(true);
   const [weather, setWeather] = useState<WeatherInfo | null>(null);
   const [rates, setRates] = useState<ExchangeRates>({
     EUR: 35.2,
@@ -60,52 +64,89 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'all'>('pending');
 
   // 1. 取得使用者即時 GPS 定位
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setUserLocation(loc);
-
-          // 透過反向地理編碼取得地名
-          fetch(`/api/geocode?lat=${loc.lat}&lng=${loc.lng}`)
-            .then(res => res.json())
-            .then(data => {
-              if (data.locationName && data.locationName !== '歐洲旅遊足跡點') {
-                setUserCity(data.locationName);
-              }
-            })
-            .catch(() => {});
-        },
-        err => {
-          console.warn('Geolocation access denied or unavailable:', err.message);
-          // 預設為薩爾斯堡中心
-          setUserLocation({ lat: 47.8095, lng: 13.055 });
-          setUserCity('薩爾斯堡 (Salzburg)');
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    }
+  const updateLocationAndCity = useCallback((lat: number, lng: number) => {
+    setUserLocation({ lat, lng });
+    fetch(`/api/geocode?lat=${lat}&lng=${lng}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.locationName && data.locationName !== '歐洲旅遊足跡點') {
+          setUserCity(data.locationName);
+        } else {
+          setUserCity(`GPS (${lat.toFixed(3)}, ${lng.toFixed(3)})`);
+        }
+      })
+      .catch(() => {
+        setUserCity(`GPS (${lat.toFixed(3)}, ${lng.toFixed(3)})`);
+      })
+      .finally(() => {
+        setIsLocating(false);
+      });
   }, []);
 
-  // 2. 載入行程資料
-  const fetchItinerary = useCallback(async () => {
+  const requestUserLocation = useCallback(() => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      setUserLocation({ lat: 47.8095, lng: 13.055 });
+      setUserCity('薩爾斯堡 (Salzburg)');
+      setIsLocating(false);
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        updateLocationAndCity(pos.coords.latitude, pos.coords.longitude);
+      },
+      err => {
+        console.warn('Geolocation access denied or unavailable:', err.message);
+        setUserLocation({ lat: 47.8095, lng: 13.055 });
+        setUserCity('薩爾斯堡 (未開啟GPS定位)');
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }, [updateLocationAndCity]);
+
+  useEffect(() => {
+    requestUserLocation();
+
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      const watchId = navigator.geolocation.watchPosition(
+        pos => {
+          updateLocationAndCity(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 30000 }
+      );
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, [requestUserLocation, updateLocationAndCity]);
+
+  // 2. 載入行程資料（支援指定旅行分頁）
+  const fetchItinerary = useCallback(async (tripParam?: string) => {
     try {
-      const res = await fetch('/api/itinerary');
+      const query = tripParam ? `?trip=${encodeURIComponent(tripParam)}` : '';
+      const res = await fetch(`/api/itinerary${query}`);
       if (res.ok) {
         const data = await res.json();
         setItinerary(data.items || []);
         setIsGoogleConnected(data.source === 'google_sheets');
+        if (data.currentTrip) {
+          setCurrentTrip(data.currentTrip);
+        }
+        if (Array.isArray(data.availableTrips) && data.availableTrips.length > 0) {
+          setAvailableTrips(data.availableTrips);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch itinerary:', err);
     }
   }, []);
 
-  // 3. 載入記帳資料
-  const fetchExpenses = useCallback(async () => {
+  // 3. 載入記帳資料（支援指定旅行分頁）
+  const fetchExpenses = useCallback(async (tripParam?: string) => {
     try {
-      const res = await fetch('/api/expenses');
+      const query = tripParam ? `?trip=${encodeURIComponent(tripParam)}` : '';
+      const res = await fetch(`/api/expenses${query}`);
       if (res.ok) {
         const data = await res.json();
         setExpenses(data.items || []);
@@ -145,11 +186,31 @@ export default function Home() {
   useEffect(() => {
     async function init() {
       setIsLoading(true);
-      await Promise.all([fetchItinerary(), fetchExpenses(), fetchRates()]);
+      const savedTrip =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem(ACTIVE_TRIP_STORAGE_KEY) || undefined
+          : undefined;
+      await Promise.all([fetchItinerary(savedTrip), fetchExpenses(savedTrip), fetchRates()]);
       setIsLoading(false);
     }
     init();
   }, [fetchItinerary, fetchExpenses, fetchRates]);
+
+  // 切換旅行分頁
+  const handleSelectTrip = useCallback(
+    async (nextTrip: string) => {
+      if (!nextTrip) return;
+      setCurrentTrip(nextTrip);
+      setSelectedSpot(null);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(ACTIVE_TRIP_STORAGE_KEY, nextTrip);
+      }
+      setIsLoading(true);
+      await Promise.all([fetchItinerary(nextTrip), fetchExpenses(nextTrip)]);
+      setIsLoading(false);
+    },
+    [fetchItinerary, fetchExpenses]
+  );
 
   // 當取得使用者位置或行程首站時，載入對應天氣
   useEffect(() => {
@@ -171,12 +232,12 @@ export default function Home() {
       await fetch('/api/itinerary/reorder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceIndex, destinationIndex }),
+        body: JSON.stringify({ sourceIndex, destinationIndex, trip: currentTrip }),
       });
     } catch (err) {
       console.error('Failed to sync reorder to server:', err);
       // 失敗時重新獲取保證一致
-      fetchItinerary();
+      fetchItinerary(currentTrip);
     }
   };
 
@@ -185,7 +246,7 @@ export default function Home() {
     const res = await fetch('/api/itinerary', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
+      body: JSON.stringify({ ...updated, trip: currentTrip }),
     });
     if (!res.ok) throw new Error('儲存失敗');
 
@@ -208,12 +269,12 @@ export default function Home() {
       const res = await fetch('/api/itinerary', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedSpot),
+        body: JSON.stringify({ ...updatedSpot, trip: currentTrip }),
       });
       if (!res.ok) throw new Error('更新完成狀態失敗');
     } catch (err) {
       console.error('Failed to toggle completion status:', err);
-      fetchItinerary();
+      fetchItinerary(currentTrip);
     }
   };
 
@@ -222,11 +283,37 @@ export default function Home() {
     const res = await fetch('/api/itinerary', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newItem),
+      body: JSON.stringify({ ...newItem, trip: currentTrip }),
     });
     if (!res.ok) throw new Error('新增失敗');
     const created = await res.json();
     setItinerary(prev => [...prev, created]);
+  };
+
+  // 刪除行程點（樂觀更新 + 後端持久化）
+  const handleDeleteItinerary = async (spot: ItineraryItem) => {
+    // 樂觀更新：從前端即時移除，並重新計算 rowIndex
+    setItinerary(prev => {
+      const remaining = prev.filter(item => item.rowIndex !== spot.rowIndex);
+      return remaining.map((item, idx) => ({ ...item, rowIndex: idx + 2 }));
+    });
+
+    if (selectedSpot?.rowIndex === spot.rowIndex) {
+      setSelectedSpot(null);
+    }
+
+    try {
+      const res = await fetch('/api/itinerary', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowIndex: spot.rowIndex, trip: currentTrip }),
+      });
+      if (!res.ok) throw new Error('刪除行程失敗');
+    } catch (err) {
+      console.error('Failed to delete itinerary spot:', err);
+      fetchItinerary(currentTrip);
+      alert('刪除行程失敗，已重新載入最新行程');
+    }
   };
 
   // 記帳完成回呼
@@ -248,19 +335,20 @@ export default function Home() {
       <Header
         weather={weather}
         userCity={userCity}
+        isLocating={isLocating}
         isGoogleConnected={isGoogleConnected}
+        currentTrip={currentTrip}
+        availableTrips={availableTrips}
+        onSelectTrip={handleSelectTrip}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenShopping={() => setIsShoppingOpen(true)}
+        onRefreshLocation={requestUserLocation}
         onOpenExpensesList={() => setIsExpensesListOpen(true)}
         expenseCount={expenses.length}
       />
 
-      {/* 當日預算晴雨表與即時匯率小工具 */}
-      <BudgetCroissantBar expenses={expenses} rates={rates} />
-
       {/* 主地圖區塊 */}
       <main className="max-w-6xl mx-auto px-4 w-full flex-1">
-        <div className="mt-2">
+        <div className="mt-3">
           <InteractiveMap
             itinerary={displayedItinerary}
             expenses={expenses}
@@ -275,7 +363,7 @@ export default function Home() {
         {isLoading ? (
           <div className="py-20 flex flex-col items-center justify-center text-slate-500">
             <RefreshCw className="w-8 h-8 animate-spin text-sky-500 mb-3" />
-            <p className="font-bold text-sm">正在整理三天歐洲精美行程與試算表...</p>
+            <p className="font-bold text-sm">正在載入「{currentTrip}」行程與記帳分頁...</p>
           </div>
         ) : (
           <ItinerarySection
@@ -285,6 +373,7 @@ export default function Home() {
             onEditSpot={spot => setEditingSpot(spot)}
             onReorder={handleReorder}
             onToggleComplete={handleToggleComplete}
+            onDeleteSpot={handleDeleteItinerary}
             onOpenAddModal={() => setIsAddOpen(true)}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -310,6 +399,7 @@ export default function Home() {
         isOpen={Boolean(editingSpot)}
         onClose={() => setEditingSpot(null)}
         onSave={handleSaveItinerary}
+        onDelete={handleDeleteItinerary}
       />
 
       {/* 新增行程 Modal */}
@@ -340,6 +430,7 @@ export default function Home() {
         }}
         userLocation={userLocation}
         rates={rates}
+        currentTrip={currentTrip}
         initialAmount={prefilledExpense.amount}
         initialCurrency={prefilledExpense.currency}
         initialCategory={prefilledExpense.amount ? '購物' : '美食'}
@@ -353,12 +444,19 @@ export default function Home() {
         expenses={expenses}
       />
 
-      {/* Google Sheets 連線設定 Modal */}
+      {/* Google Sheets 連線設定與多旅行分頁管理 Modal */}
       <SheetSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         isGoogleConnected={isGoogleConnected}
-        onRefreshData={fetchItinerary}
+        currentTrip={currentTrip}
+        availableTrips={availableTrips}
+        onSelectTrip={handleSelectTrip}
+        onRefreshData={targetTrip => {
+          const tripToFetch = targetTrip || currentTrip;
+          fetchItinerary(tripToFetch);
+          fetchExpenses(tripToFetch);
+        }}
       />
 
       {/* 頁尾旅行小語 */}
@@ -366,7 +464,7 @@ export default function Home() {
         <p className="flex items-center justify-center gap-1.5 font-medium">
           <span>🥐 歐洲旅行萬用小手冊</span>
           <span>·</span>
-          <span>Google Sheets 雲端無伺服器資料庫</span>
+          <span>Google Sheets 多旅行分頁雲端資料庫</span>
           <span>·</span>
           <span>Powered by GCP Cloud Run</span>
         </p>

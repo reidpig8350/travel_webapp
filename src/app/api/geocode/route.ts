@@ -18,19 +18,27 @@ export async function GET(req: Request) {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`;
       const res = await fetch(url, {
-        headers: { 'User-Agent': 'EuroTripPlannerApp/1.0 (contact@example.com)' },
+        headers: {
+          'User-Agent': 'EuroTripPlannerApp/1.0 (contact@example.com)',
+          'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
+        },
         next: { revalidate: 86400 },
       });
 
       if (res.ok) {
         const data = await res.json();
         const addr = data.address || {};
-        const district = addr.suburb || addr.city_district || addr.quarter || addr.neighbourhood || '';
-        const city = addr.city || addr.town || addr.village || addr.municipality || '';
+        const district =
+          addr.suburb || addr.city_district || addr.quarter || addr.neighbourhood || addr.borough || '';
+        const city =
+          addr.city || addr.town || addr.village || addr.municipality || addr.county || addr.state || '';
         const country = addr.country || '';
 
-        const parts = [country, city, district].filter(Boolean);
-        const locationName = parts.length > 0 ? parts.join(' · ') : data.display_name?.split(',').slice(0, 3).join(', ') || '';
+        const uniqueParts = Array.from(new Set([country, city, district].filter(Boolean)));
+        const locationName =
+          uniqueParts.length > 0
+            ? uniqueParts.join(' · ')
+            : data.display_name?.split(',').slice(0, 3).join(', ') || '';
 
         cache.set(key, locationName);
         return NextResponse.json({ locationName });

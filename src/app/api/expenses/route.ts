@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { getExpenses, addExpense } from '@/lib/googleSheets';
 import { ExpenseItem } from '@/types';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const data = await getExpenses();
+    const { searchParams } = new URL(req.url);
+    const trip = searchParams.get('trip') || undefined;
+    const data = await getExpenses(trip);
     return NextResponse.json(data);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch expenses' }, { status: 500 });
@@ -13,7 +15,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
     const body = await req.json();
+    const trip = body.trip || searchParams.get('trip') || undefined;
 
     // 格式化記帳資料
     const expense: Omit<ExpenseItem, 'rowIndex'> = {
@@ -33,7 +37,7 @@ export async function POST(req: Request) {
       photo_url: body.photo_url || '',
     };
 
-    const saved = await addExpense(expense);
+    const saved = await addExpense(expense, trip);
     return NextResponse.json(saved, { status: 201 });
   } catch (err: any) {
     console.error('Failed to add expense:', err);

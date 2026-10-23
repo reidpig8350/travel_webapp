@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, MapPin, Search, Calendar, Clock, DollarSign, Tag, FileText, Check } from 'lucide-react';
+import { X, Save, MapPin, Search, Calendar, Clock, DollarSign, Tag, FileText, Check, Trash2 } from 'lucide-react';
 import { ItineraryItem } from '@/types';
 
 interface EditItineraryModalProps {
@@ -9,6 +9,7 @@ interface EditItineraryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (updated: ItineraryItem) => Promise<void>;
+  onDelete?: (spot: ItineraryItem) => Promise<void>;
 }
 
 export default function EditItineraryModal({
@@ -16,9 +17,11 @@ export default function EditItineraryModal({
   isOpen,
   onClose,
   onSave,
+  onDelete,
 }: EditItineraryModalProps) {
   const [formData, setFormData] = useState<ItineraryItem | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isSearchingCoord, setIsSearchingCoord] = useState(false);
 
   useEffect(() => {
@@ -98,17 +101,34 @@ export default function EditItineraryModal({
 
         {/* 表單內容 */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
-          {/* 景點名稱 */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">景點 / 活動名稱 *</label>
-            <input
-              type="text"
-              required
-              value={formData.spot_name}
-              onChange={e => handleChange('spot_name', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
-              placeholder="例：米拉貝爾宮花園"
-            />
+          {/* 景點名稱與門票狀態 (2:1 寬度比) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">景點 / 活動名稱 *</label>
+              <input
+                type="text"
+                required
+                value={formData.spot_name}
+                onChange={e => handleChange('spot_name', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
+                placeholder="例：米拉貝爾宮花園"
+              />
+            </div>
+            <div className="sm:col-span-1">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5 text-gray-400" /> 門票狀態
+              </label>
+              <select
+                value={formData.ticket_status}
+                onChange={e => handleChange('ticket_status', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
+              >
+                <option value="免門票">免門票</option>
+                <option value="已購票">已購票</option>
+                <option value="需預約">需預約</option>
+                <option value="現場購票">現場購票</option>
+              </select>
+            </div>
           </div>
 
           {/* 國家、城市與類別 */}
@@ -147,8 +167,8 @@ export default function EditItineraryModal({
             </div>
           </div>
 
-          {/* 日期與時間 */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* 日期、時間與預估費用 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-sky-500" /> 日期 (YYYY-MM-DD)
@@ -171,23 +191,45 @@ export default function EditItineraryModal({
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                <DollarSign className="w-3.5 h-3.5 text-gray-400" /> 預估費用 (€)
+              </label>
+              <input
+                type="number"
+                value={formData.cost_estimate}
+                onChange={e => handleChange('cost_estimate', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+              />
+            </div>
           </div>
 
-          {/* 經度與緯度 (可一鍵自動查詢) */}
-          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
-            <div className="flex items-center justify-between mb-2">
+          {/* 經度與緯度 (可一鍵自動查詢，並整合已探索勾選) */}
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-sky-500" /> 地圖經緯度座標
               </label>
-              <button
-                type="button"
-                onClick={handleSearchCoordinates}
-                disabled={isSearchingCoord}
-                className="text-[11px] px-2.5 py-1 bg-sky-50 hover:bg-sky-100 rounded-lg text-sky-700 border border-sky-200 font-bold flex items-center gap-1 transition-all cursor-pointer"
-              >
-                <Search className="w-3 h-3" />
-                {isSearchingCoord ? '查詢中...' : '依景點名自動搜尋座標'}
-              </button>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700 select-none hover:text-sky-600 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={!!formData.completed}
+                    onChange={e => handleChange('completed', e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                  />
+                  <span>已探索</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSearchCoordinates}
+                  disabled={isSearchingCoord}
+                  className="text-[11px] px-2.5 py-1 bg-white hover:bg-sky-50 rounded-lg text-sky-700 border border-sky-200 font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                >
+                  <Search className="w-3 h-3" />
+                  {isSearchingCoord ? '查詢中...' : '依景點自動定位'}
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <input
@@ -209,36 +251,6 @@ export default function EditItineraryModal({
             </div>
           </div>
 
-          {/* 門票狀態與預估花費 */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <Tag className="w-3.5 h-3.5 text-gray-400" /> 門票狀態
-              </label>
-              <select
-                value={formData.ticket_status}
-                onChange={e => handleChange('ticket_status', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
-              >
-                <option value="免門票">免門票</option>
-                <option value="已購票">已購票</option>
-                <option value="需預約">需預約</option>
-                <option value="現場購票">現場購票</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <DollarSign className="w-3.5 h-3.5 text-gray-400" /> 預估費用 (€)
-              </label>
-              <input
-                type="number"
-                value={formData.cost_estimate}
-                onChange={e => handleChange('cost_estimate', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
-              />
-            </div>
-          </div>
-
           {/* 詳細備註 */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
@@ -253,49 +265,51 @@ export default function EditItineraryModal({
             />
           </div>
 
-          {/* 行程探索狀態 (探索中 / 已解鎖) */}
-          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+          {/* 送出、取消與刪除按鈕 */}
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
             <div>
-              <span className="block text-xs font-bold text-slate-700">行程探索狀態</span>
-              <span className="text-[11px] text-slate-600">已解鎖將收納至「已解鎖 Collected」分頁並呈現灰階</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleChange('completed', !formData.completed)}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                formData.completed
-                  ? 'bg-emerald-500 text-white shadow-2xs hover:bg-emerald-600'
-                  : 'bg-white border border-slate-300 text-slate-600 hover:border-slate-400'
-              }`}
-            >
-              {formData.completed ? (
-                <>
-                  <Check className="w-3.5 h-3.5 stroke-[3]" />
-                  <span>已解鎖 Collected</span>
-                </>
-              ) : (
-                <span>🥐 探索中 Exploring</span>
+              {onDelete && (
+                <button
+                  type="button"
+                  disabled={isDeleting || isSaving}
+                  onClick={async () => {
+                    if (window.confirm(`確定要刪除「${formData.spot_name}」嗎？此操作無法復原。`)) {
+                      setIsDeleting(true);
+                      try {
+                        await onDelete(formData);
+                        onClose();
+                      } catch (err: any) {
+                        alert(`刪除失敗: ${err.message || '請稍後重試'}`);
+                      } finally {
+                        setIsDeleting(false);
+                      }
+                    }
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-white border border-rose-300 text-rose-600 hover:bg-rose-50 hover:border-rose-400 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors shadow-2xs"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{isDeleting ? '刪除中...' : '刪除'}</span>
+                </button>
               )}
-            </button>
-          </div>
+            </div>
 
-          {/* 送出與取消按鈕 */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold cursor-pointer"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 active:scale-95 text-white text-sm font-bold shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? '儲存中...' : '儲存變更'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving || isDeleting}
+                className="px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 active:scale-95 text-white text-sm font-bold shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {isSaving ? '儲存中...' : '儲存變更'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

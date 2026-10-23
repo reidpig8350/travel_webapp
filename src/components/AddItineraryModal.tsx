@@ -108,17 +108,34 @@ export default function AddItineraryModal({
 
         {/* 表單內容 */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
-          {/* 景點名稱 */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">景點 / 活動名稱 *</label>
-            <input
-              type="text"
-              required
-              value={formData.spot_name}
-              onChange={e => handleChange('spot_name', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
-              placeholder="例：薩爾斯堡莫札特故居"
-            />
+          {/* 景點名稱與門票狀態 (2:1 寬度比) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">景點 / 活動名稱 *</label>
+              <input
+                type="text"
+                required
+                value={formData.spot_name}
+                onChange={e => handleChange('spot_name', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
+                placeholder="例：薩爾斯堡莫札特故居"
+              />
+            </div>
+            <div className="sm:col-span-1">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5 text-gray-400" /> 門票狀態
+              </label>
+              <select
+                value={formData.ticket_status}
+                onChange={e => handleChange('ticket_status', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
+              >
+                <option value="免門票">免門票</option>
+                <option value="已購票">已購票</option>
+                <option value="需預約">需預約</option>
+                <option value="現場購票">現場購票</option>
+              </select>
+            </div>
           </div>
 
           {/* 國家、城市與類別 */}
@@ -157,8 +174,8 @@ export default function AddItineraryModal({
             </div>
           </div>
 
-          {/* 日期與時間 */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* 日期、時間與預估花費 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-sky-500" /> 日期 (YYYY-MM-DD)
@@ -181,6 +198,17 @@ export default function AddItineraryModal({
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                <DollarSign className="w-3.5 h-3.5 text-gray-400" /> 預估花費 (€)
+              </label>
+              <input
+                type="number"
+                value={formData.cost_estimate}
+                onChange={e => handleChange('cost_estimate', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+              />
+            </div>
           </div>
 
           {/* 經度與緯度 */}
@@ -193,7 +221,7 @@ export default function AddItineraryModal({
                 type="button"
                 onClick={handleSearchCoordinates}
                 disabled={isSearchingCoord}
-                className="text-[11px] px-2.5 py-1 bg-sky-50 hover:bg-sky-100 rounded-lg text-sky-700 border border-sky-200 font-bold flex items-center gap-1 transition-all cursor-pointer"
+                className="text-[11px] px-2.5 py-1 bg-white hover:bg-sky-50 rounded-lg text-sky-700 border border-sky-200 font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
               >
                 <Search className="w-3 h-3" />
                 {isSearchingCoord ? '查詢中...' : '依地名自動搜尋座標'}
@@ -215,36 +243,6 @@ export default function AddItineraryModal({
                 onChange={e => handleChange('lng', parseFloat(e.target.value) || 0)}
                 placeholder="經度 (lng)"
                 className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs"
-              />
-            </div>
-          </div>
-
-          {/* 門票狀態與預估花費 */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <Tag className="w-3.5 h-3.5 text-gray-400" /> 門票狀態
-              </label>
-              <select
-                value={formData.ticket_status}
-                onChange={e => handleChange('ticket_status', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
-              >
-                <option value="免門票">免門票</option>
-                <option value="已購票">已購票</option>
-                <option value="需預約">需預約</option>
-                <option value="現場購票">現場購票</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <DollarSign className="w-3.5 h-3.5 text-gray-400" /> 預估花費 (€)
-              </label>
-              <input
-                type="number"
-                value={formData.cost_estimate}
-                onChange={e => handleChange('cost_estimate', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
               />
             </div>
           </div>
